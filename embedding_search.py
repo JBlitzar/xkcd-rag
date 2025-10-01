@@ -5,7 +5,7 @@ import shutil
 from explainxkcd import ExplainXKCDScraper
 from tqdm import tqdm
 from typing import Dict, Tuple, List, Optional
-from sentence_transformers import SentenceTransformer
+
 
 from quantized_embed_query import getQuantizedEmbedder
 
@@ -42,7 +42,8 @@ class EmbeddingCache:
         # If there are many per-comic .npy files and no combined file, migrate them.
         self._maybe_migrate_individual_files()
 
-    def loadOrGetModel(self) -> SentenceTransformer:
+    def loadOrGetModel(self):
+        from sentence_transformers import SentenceTransformer
         if self.model is None:
             self.model = SentenceTransformer(self.model_name, trust_remote_code=True, backend="onnx")()
         return self.model
@@ -318,6 +319,27 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
 if __name__ == "__main__":
     print("imported!")
     query = """man pages are so confusing"""
+    results = query_xkcd(query)
+    for comic_number, explanation, score in results:
+        print(
+            f"Comic: {comic_number} Score: {score:.4f}. Explanation: {explanation[:100]}\n"
+        )
+
+    query = """asdfasdf asdfasdf apgiohaerpguhaerogbasedg jkwr"""
+    results = query_xkcd(query)
+    for comic_number, explanation, score in results:
+        print(
+            f"Comic: {comic_number} Score: {score:.4f}. Explanation: {explanation[:100]}\n"
+        )
+
+    query = """[silence]"""
+    results = query_xkcd(query)
+    for comic_number, explanation, score in results:
+        print(
+            f"Comic: {comic_number} Score: {score:.4f}. Explanation: {explanation[:100]}\n"
+        )
+
+    query = """I like to eat sandwiches"""
     results = query_xkcd(query)
     for comic_number, explanation, score in results:
         print(
