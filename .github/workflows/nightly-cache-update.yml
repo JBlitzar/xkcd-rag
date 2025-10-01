@@ -48,8 +48,11 @@ jobs:
           scraper.hydrate_and_refresh_cache()
           explanations = scraper.load_cache()
 
+          # Incremental embeddings: only embed comics missing from the index
           cache = EmbeddingCache()
-          cache.get_doc_embeddings(explanations)
+          missing = [n for n in sorted(explanations.keys()) if not cache.has(str(n))]
+          for n in missing:
+              cache.get_or_compute(str(n), explanations[n])
           PY
 
       - name: Commit and push changes
