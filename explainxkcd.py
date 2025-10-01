@@ -1,5 +1,5 @@
 import requests
-from tqdm import trange, tqdm
+from tqdm import tqdm
 import os
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -92,6 +92,25 @@ class ExplainXKCDScraper:
                     ensure_ascii=False,
                     indent=4,
                 )
+
+        self.load_cache()
+
+    def load_cache(self):
+        explanations = {}
+        if not os.path.exists(self.cache_dir):
+            return explanations
+
+        for filename in os.listdir(self.cache_dir):
+            if filename.endswith(".json"):
+                with open(
+                    os.path.join(self.cache_dir, filename), "r", encoding="utf-8"
+                ) as f:
+                    data = json.load(f)
+                    comic_number = data.get("comic_number")
+                    explanation = data.get("explanation")
+                    if comic_number and explanation:
+                        explanations[comic_number] = explanation
+        return explanations
 
 
 if __name__ == "__main__":

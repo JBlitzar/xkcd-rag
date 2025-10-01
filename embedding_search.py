@@ -126,7 +126,9 @@ class EmbeddingCache:
 
     def build_for_documents(self, docs: Dict[int, str]) -> Dict[int, np.ndarray]:
         embeddings: Dict[int, np.ndarray] = {}
-        for comic_number, text in tqdm(docs.items(), desc="Building/loading embeddings"):
+        for comic_number, text in tqdm(
+            docs.items(), desc="Building/loading embeddings"
+        ):
             key = str(comic_number)
             embeddings[comic_number] = self.get_or_compute(key, text)
         return embeddings
@@ -138,7 +140,7 @@ class EmbeddingCache:
         """
         combined_exists = os.path.exists(self._combined_path())
         # find numeric .npy files (e.g. 1.npy, 42.npy)
-        all_files = [f for f in os.listdir(self.cache_dir) if f.endswith('.npy')]
+        all_files = [f for f in os.listdir(self.cache_dir) if f.endswith(".npy")]
         individual_files = [f for f in all_files if f != self.combined_filename]
         if combined_exists or not individual_files:
             return
