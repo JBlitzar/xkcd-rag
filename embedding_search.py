@@ -113,9 +113,7 @@ class EmbeddingCache:
         # Save atomically: write to temp files then move
         tmp_arr = self._combined_path() + ".tmp"
         tmp_idx = self._index_path() + ".tmp"
-        # Use file handle so NumPy doesn't append .npy to tmp filename
-        with open(tmp_arr, "wb") as f:
-            np.save(f, arr)
+        np.save(tmp_arr, arr)
         with open(tmp_idx, "w", encoding="utf-8") as f:
             json.dump(index, f, ensure_ascii=False, indent=2)
         os.replace(tmp_arr, self._combined_path())
