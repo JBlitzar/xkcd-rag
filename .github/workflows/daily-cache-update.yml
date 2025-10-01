@@ -23,7 +23,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy requests tqdm ollama
+          pip install -r pyproject.toml
 
       - name: Install Ollama
         run: |
