@@ -1,4 +1,3 @@
-import ollama
 import numpy as np
 import os
 import json
@@ -120,6 +119,8 @@ class EmbeddingCache:
         os.replace(tmp_idx, self._index_path())
 
     def compute_embedding(self, text: str) -> np.ndarray:
+        import ollama
+
         # Ollama client returns an object with .embedding
         emb = ollama.embeddings(model=self.model, prompt=text).embedding
         arr = np.array(emb, dtype=np.float32)
