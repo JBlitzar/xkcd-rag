@@ -6,11 +6,11 @@ from embedding_search import EmbeddingCache
 from tqdm import trange
 
 
-def measure_once(text: str) -> dict:
+def measure_once(cache: EmbeddingCache, text: str) -> dict:
     tracemalloc.start()
 
     t0 = time.perf_counter()
-    cache = EmbeddingCache()
+
     emb = cache.compute_embedding(text)
     t1 = time.perf_counter()
     current, peak = tracemalloc.get_traced_memory()
@@ -27,11 +27,12 @@ def main():
     p.add_argument("--text", "-t", default="hello world", help="Text to embed")
     p.add_argument("--iters", "-n", type=int, default=100, help="Iterations")
     args = p.parse_args()
+    cache = EmbeddingCache()
 
     results = []
     print(f"Running {args.iters} iterations for text: {args.text!r}")
     for i in trange(args.iters):
-        r = measure_once(args.text)
+        r = measure_once(cache, args.text)
         results.append(r)
         print(
             f"iter {i + 1}: time={r['time_s']:.4f}s peak={r['peak_bytes'] / 1024:.1f} KiB vec={r['vector_len']}"
