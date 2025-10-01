@@ -86,6 +86,7 @@ async def worker_loop():
             if score > SCORE_THRESHOLD:
                 url = f"https://xkcd.com/{comic_number}/"
                 try:
+                    print("Sending!!")
                     await channel.send(f"Best xkcd match (score {score:.2f}): {url}")
                 except Exception:
                     logger.exception("Failed to send message to channel")
