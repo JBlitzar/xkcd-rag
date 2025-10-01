@@ -5,7 +5,7 @@ import json
 import shutil
 from explainxkcd import ExplainXKCDScraper
 from tqdm import tqdm
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 
 class EmbeddingCache:
@@ -13,8 +13,7 @@ class EmbeddingCache:
 
     - Combined array saved to <cache_dir>/embeddings.npy (shape: N x vector_size, dtype=float32)
     - Index mapping saved to <cache_dir>/index.json: {"<comic_number>": row_index}
-    - On init, will attempt to migrate existing per-comic .npy files into the combined file
-      and move the originals to a backup folder.
+    - Caches arrays and index in memory to avoid reloading each query.
     """
 
     def __init__(
@@ -31,6 +30,12 @@ class EmbeddingCache:
         self.combined_filename = "embeddings.npy"
         self.index_filename = "index.json"
 
+        # in-memory caches
+        self._combined_cache: Optional[np.ndarray] = None
+        self._index_cache: Optional[Dict[str, int]] = None
+        # cached mapping of comic_number -> embedding (loaded from combined array)
+        self._doc_embeddings: Optional[Dict[int, np.ndarray]] = None
+
         # If there are many per-comic .npy files and no combined file, migrate them.
         self._maybe_migrate_individual_files()
 
@@ -41,19 +46,28 @@ class EmbeddingCache:
         return os.path.join(self.cache_dir, self.index_filename)
 
     def _load_index(self) -> Dict[str, int]:
+        if self._index_cache is not None:
+            return self._index_cache
         if os.path.exists(self._index_path()):
             with open(self._index_path(), "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+                self._index_cache = json.load(f)
+                return self._index_cache
+        self._index_cache = {}
+        return self._index_cache
 
     def _save_index(self, index: Dict[str, int]) -> None:
+        self._index_cache = index
         with open(self._index_path(), "w", encoding="utf-8") as f:
             json.dump(index, f, ensure_ascii=False, indent=2)
 
-    def _load_combined(self) -> np.ndarray | None:
+    def _load_combined(self) -> Optional[np.ndarray]:
+        if self._combined_cache is not None:
+            return self._combined_cache
         if os.path.exists(self._combined_path()):
             # Security: disable pickle on load
-            return np.load(self._combined_path(), allow_pickle=False)
+            arr = np.load(self._combined_path(), allow_pickle=False)
+            self._combined_cache = arr
+            return arr
         return None
 
     def has(self, key: str) -> bool:
@@ -89,6 +103,12 @@ class EmbeddingCache:
             else:
                 arr = np.vstack([arr, np.expand_dims(embedding, axis=0)])
             index[key] = int(arr.shape[0] - 1)
+
+        # update in-memory caches
+        self._combined_cache = arr
+        self._index_cache = index
+        # invalidate per-doc cache
+        self._doc_embeddings = None
 
         # Save atomically: write to temp files then move
         tmp_arr = self._combined_path() + ".tmp"
@@ -133,6 +153,45 @@ class EmbeddingCache:
             embeddings[comic_number] = self.get_or_compute(key, text)
         return embeddings
 
+    def get_doc_embeddings(self, docs: Dict[int, str]) -> Dict[int, np.ndarray]:
+        """Return a mapping comic_number -> embedding (cached in memory).
+
+        This avoids rebuilding or reloading embeddings repeatedly.
+        """
+        if self._doc_embeddings is not None:
+            return self._doc_embeddings
+
+        # Try to load combined array and index and map rows to comic numbers
+        arr = self._load_combined()
+        index = self._load_index()
+        if arr is None or not index:
+            # fallback to building per-document
+            self._doc_embeddings = self.build_for_documents(docs)
+            return self._doc_embeddings
+
+        mapping: Dict[int, np.ndarray] = {}
+        for comic_str, row in index.items():
+            try:
+                comic_number = int(comic_str)
+            except ValueError:
+                continue
+            if row < 0 or row >= arr.shape[0]:
+                continue
+            mapping[comic_number] = arr[row].astype(np.float32)
+
+        # For any docs missing from index, compute and append
+        missing: List[int] = [c for c in docs.keys() if c not in mapping]
+        if missing:
+            # compute missing embeddings and save them
+            for comic_number in missing:
+                text = docs[comic_number]
+                emb = self.compute_embedding(text)
+                self.save(str(comic_number), emb)
+                mapping[comic_number] = emb
+
+        self._doc_embeddings = mapping
+        return mapping
+
     def _maybe_migrate_individual_files(self) -> None:
         """If individual <n>.npy files exist and no combined file exists, migrate them.
 
@@ -170,9 +229,11 @@ class EmbeddingCache:
         for i, (comic_number, _) in enumerate(entries):
             index[str(comic_number)] = i
 
-        # write combined and index
+        # write combined and index and populate caches
         np.save(self._combined_path(), arr)
         self._save_index(index)
+        self._combined_cache = arr
+        self._index_cache = index
 
         # move originals to backup
         backup_dir = os.path.join(self.cache_dir, "backup_individual_npys")
@@ -190,15 +251,41 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
+# Module-level singleton for the embedding cache
+_embedding_cache_singleton: Optional[EmbeddingCache] = None
+
+
+def get_embedding_cache() -> EmbeddingCache:
+    global _embedding_cache_singleton
+    if _embedding_cache_singleton is None:
+        _embedding_cache_singleton = EmbeddingCache()
+    return _embedding_cache_singleton
+
+
+# Module-level cached explanations
+_explanations_cache: Optional[Dict[int, str]] = None
+
+
+def get_explanations(refresh: bool = False) -> Dict[int, str]:
+    global _explanations_cache
+    if _explanations_cache is not None and not refresh:
+        return _explanations_cache
     scraper = ExplainXKCDScraper()
+    # hydrate cache if needed (will only download what's missing)
     scraper.hydrate_and_refresh_cache()
-    explanations = scraper.load_cache()  # {comic_number: explanation}
+    explanations = scraper.load_cache()
+    _explanations_cache = explanations or {}
+    return _explanations_cache
+
+
+def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
+    print("Querying xkcd explanations...", text)
+    explanations = get_explanations()
     if not explanations:
         return []
 
-    emb_cache = EmbeddingCache()
-    doc_embeddings = emb_cache.build_for_documents(explanations)
+    emb_cache = get_embedding_cache()
+    doc_embeddings = emb_cache.get_doc_embeddings(explanations)
 
     query_emb = emb_cache.compute_embedding(text)
 
