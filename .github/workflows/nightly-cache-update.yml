@@ -1,0 +1,70 @@
+name: Nightly XKCD cache update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy requests tqdm ollama
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start Ollama server
+        run: |
+          nohup ollama serve > /dev/null 2>&1 &
+          timeout 60 sh -c 'until curl -s http://127.0.0.1:11434/api/tags >/dev/null; do sleep 1; done'
+
+      - name: Pull embedding model
+        run: |
+          ollama pull nomic-embed-text
+
+      - name: Rebuild caches
+        run: |
+          python - <<'PY'
+          from explainxkcd import ExplainXKCDScraper
+          from embedding_search import EmbeddingCache
+
+          scraper = ExplainXKCDScraper()
+          scraper.hydrate_and_refresh_cache()
+          explanations = scraper.load_cache()
+
+          cache = EmbeddingCache()
+          cache.get_doc_embeddings(explanations)
+          PY
+
+      - name: Commit and push changes
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(cache): nightly update explainxkcd and embeddings"
+            git push
+          fi
