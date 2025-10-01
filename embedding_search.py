@@ -212,7 +212,9 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
 
 
 if __name__ == "__main__":
-    query = "What is the best season of the year?"
+    query = """sudo make me a sandwich"""
     results = query_xkcd(query)
     for comic_number, explanation, score in results:
-        print(f"Comic: {comic_number} Score: {score:.4f}\nExplanation: {explanation}\n")
+        print(
+            f"Comic: {comic_number} Score: {score:.4f}. Explanation: {explanation[:100]}\n"
+        )
