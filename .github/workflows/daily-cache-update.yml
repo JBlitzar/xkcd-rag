@@ -23,7 +23,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r pyproject.toml
+          pip install einops numpy onnxruntime "optimum[onnxruntime]" requests sentence-transformers tqdm dotenv
 
       - name: Install Ollama
         run: |
