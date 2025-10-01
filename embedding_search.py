@@ -282,19 +282,23 @@ def get_explanations(refresh: bool = False) -> Dict[int, str]:
 def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
     print("Querying xkcd explanations...", text)
     explanations = get_explanations()
+    print(f"Loaded {len(explanations)} explanations")
     if not explanations:
         return []
 
     emb_cache = get_embedding_cache()
+    print("got emb cache. Loading embeddings...")
     doc_embeddings = emb_cache.get_doc_embeddings(explanations)
+    print("got embeddings. Computing single embedding...")
 
     query_emb = emb_cache.compute_embedding(text)
+    print("got query embedding. Computing similarities...")
 
     sims: List[Tuple[int, str, float]] = []
     for comic_number, doc_emb in doc_embeddings.items():
         score = cosine_similarity(query_emb, doc_emb)
         sims.append((comic_number, explanations[comic_number], score))
-
+    print("computed similarities. Sorting...")
     sims.sort(key=lambda x: x[2], reverse=True)
     return sims[:top_k]
 
