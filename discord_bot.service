@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/jblitzar/xkcd-rag
-ExecStart=/bin/bash -c 'exec /home/jblitzar/.local/bin/uv run /home/jblitzar/xkcd-rag/bot.py'
+ExecStart=/bin/sh -c 'exec /home/jblitzar/.local/bin/uv run bot.py'
 Restart=always
 RestartSec=10
 
