@@ -53,6 +53,10 @@ jobs:
           missing = [n for n in sorted(explanations.keys()) if not cache.has(str(n))]
           for n in missing:
               cache.get_or_compute(str(n), explanations[n])
+          # Recompute embeddings for the last item in cache
+          if explanations:
+            last_comic = max(explanations.keys())
+            cache.get_or_compute(str(last_comic), explanations[last_comic], force=True)
           PY
 
       - name: Commit and push changes

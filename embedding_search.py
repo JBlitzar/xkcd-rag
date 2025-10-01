@@ -116,7 +116,7 @@ class EmbeddingCache:
         np.save(tmp_arr, arr)
         with open(tmp_idx, "w", encoding="utf-8") as f:
             json.dump(index, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_arr, self._combined_path())
+        os.replace(tmp_arr + ".npy", self._combined_path())
         os.replace(tmp_idx, self._index_path())
 
     def compute_embedding(self, text: str) -> np.ndarray:
@@ -137,8 +137,8 @@ class EmbeddingCache:
         out[: emb.size] = emb
         return out
 
-    def get_or_compute(self, key: str, text: str) -> np.ndarray:
-        if self.has(key):
+    def get_or_compute(self, key: str, text: str, force: bool = False) -> np.ndarray:
+        if self.has(key) and not force:
             return self.load(key)
         emb = self.compute_embedding(text)
         self.save(key, emb)
