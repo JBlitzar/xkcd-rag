@@ -45,7 +45,7 @@ class EmbeddingCache:
     def loadOrGetModel(self):
         from sentence_transformers import SentenceTransformer
         if self.model is None:
-            self.model = SentenceTransformer(self.model_name, trust_remote_code=True, backend="onnx")()
+            self.model = SentenceTransformer(self.model_name, trust_remote_code=True)()
         return self.model
 
     def _combined_path(self) -> str:
