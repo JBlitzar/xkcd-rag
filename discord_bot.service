@@ -1,0 +1,13 @@
+[Unit]
+Description=xkcd discord bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jblitzar/xkcd-rag
+ExecStart=/bin/bash -c 'exec /home/jblitzar/.local/bin/uv run /home/jblitzar/xkcd-rag/bot.py'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
