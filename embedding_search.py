@@ -120,7 +120,7 @@ class EmbeddingCache:
         os.replace(tmp_idx, self._index_path())
 
     def compute_embedding(self, text: str) -> np.ndarray:
-        query_embedding = self.model.encode("search_query: " + text)
+        query_embedding = self.model.encode("search_query: " + text, device="cpu")
         arr = np.array(query_embedding, dtype=np.float32)
         return self._ensure_vector_size(arr)
 
