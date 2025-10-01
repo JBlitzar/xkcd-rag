@@ -212,7 +212,7 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
 
 
 if __name__ == "__main__":
-    query = """sudo make me a sandwich"""
+    query = """man pages are so confusing"""
     results = query_xkcd(query)
     for comic_number, explanation, score in results:
         print(
