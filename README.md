@@ -13,4 +13,5 @@ loginctl enable-linger $USER
 ```
 
 Logs at `journalctl --user -u discord-bot -f`.
+
 or `journalctl --user -u discord-bot -n 50`.
