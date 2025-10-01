@@ -7,6 +7,8 @@ from tqdm import tqdm
 from typing import Dict, Tuple, List, Optional
 from sentence_transformers import SentenceTransformer
 
+from quantized_embed_query import getQuantizedEmbedder
+
 
 class EmbeddingCache:
     """Stores all embeddings in a single .npy plus an index.json mapping.
@@ -23,7 +25,8 @@ class EmbeddingCache:
         vector_size: int = 768,
     ):
         self.cache_dir = cache_dir
-        self.model = SentenceTransformer(model, trust_remote_code=True)
+        self.model_name = model
+        self.model = None
         self.vector_size = vector_size
         os.makedirs(self.cache_dir, exist_ok=True)
 
@@ -38,6 +41,11 @@ class EmbeddingCache:
 
         # If there are many per-comic .npy files and no combined file, migrate them.
         self._maybe_migrate_individual_files()
+
+    def loadOrGetModel(self) -> SentenceTransformer:
+        if self.model is None:
+            self.model = SentenceTransformer(self.model_name, trust_remote_code=True, backend="onnx")()
+        return self.model
 
     def _combined_path(self) -> str:
         return os.path.join(self.cache_dir, self.combined_filename)
@@ -120,12 +128,13 @@ class EmbeddingCache:
         os.replace(tmp_idx, self._index_path())
 
     def compute_embedding(self, text: str) -> np.ndarray:
-        query_embedding = self.model.encode("search_query: " + text, device="cpu")
+        print("WARNING should use quantized embedder!!!!!!!")
+        query_embedding = self.loadOrGetModel().encode("search_query: " + text, device="cpu")
         arr = np.array(query_embedding, dtype=np.float32)
         return self._ensure_vector_size(arr)
 
     def compute_embedding_doc(self, text: str) -> np.ndarray:
-        query_embedding = self.model.encode("search_document: " + text)
+        query_embedding = self.loadOrGetModel().encode("search_document: " + text)
         arr = np.array(query_embedding, dtype=np.float32)
         return self._ensure_vector_size(arr)
 
@@ -294,7 +303,7 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
     doc_embeddings = emb_cache.get_doc_embeddings(explanations)
     print("got embeddings. Computing single embedding...")
 
-    query_emb = emb_cache.compute_embedding(text)
+    query_emb = getQuantizedEmbedder().encode_query(text)
     print("got query embedding. Computing similarities...")
 
     sims: List[Tuple[int, str, float]] = []
@@ -307,6 +316,7 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
 
 
 if __name__ == "__main__":
+    print("imported!")
     query = """man pages are so confusing"""
     results = query_xkcd(query)
     for comic_number, explanation, score in results:

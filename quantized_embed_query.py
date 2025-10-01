@@ -6,7 +6,8 @@ import os
 import requests
 from pathlib import Path
 
-class QuantizedEmbedder:
+
+class _QuantizedEmbedder:
     def __init__(
         self, 
         model_name: str = "nomic-ai/nomic-embed-text-v1.5",
@@ -136,8 +137,16 @@ class QuantizedEmbedder:
         return self.encode([prefixed_text])[0]
 
 
+embedder = None
+def getQuantizedEmbedder() -> _QuantizedEmbedder:
+    # singleton pattern
+    global embedder
+    if embedder is None:
+        embedder = _QuantizedEmbedder()
+    return embedder
+
 if __name__ == "__main__":
-    embedder = QuantizedEmbedder()
+    embedder = getQuantizedEmbedder()
     texts = [
         "This is a test sentence.",
         "Another sentence for embedding."
@@ -145,3 +154,4 @@ if __name__ == "__main__":
     embeddings = embedder.encode(texts)
     print("Embeddings shape:", embeddings.shape)
     print(embeddings)
+
