@@ -5,6 +5,7 @@ import shutil
 from explainxkcd import ExplainXKCDScraper
 from tqdm import tqdm
 from typing import Dict, Tuple, List, Optional
+from sentence_transformers import SentenceTransformer
 
 
 class EmbeddingCache:
@@ -18,11 +19,11 @@ class EmbeddingCache:
     def __init__(
         self,
         cache_dir: str = "embeddings_cache",
-        model: str = "nomic-embed-text",
+        model: str = "nomic-ai/nomic-embed-text-v1.5",
         vector_size: int = 768,
     ):
         self.cache_dir = cache_dir
-        self.model = model
+        self.model = SentenceTransformer(model, trust_remote_code=True)
         self.vector_size = vector_size
         os.makedirs(self.cache_dir, exist_ok=True)
 
@@ -119,11 +120,13 @@ class EmbeddingCache:
         os.replace(tmp_idx, self._index_path())
 
     def compute_embedding(self, text: str) -> np.ndarray:
-        import ollama
+        query_embedding = self.model.encode("search_query: " + text)
+        arr = np.array(query_embedding, dtype=np.float32)
+        return self._ensure_vector_size(arr)
 
-        # Ollama client returns an object with .embedding
-        emb = ollama.embeddings(model=self.model, prompt=text).embedding
-        arr = np.array(emb, dtype=np.float32)
+    def compute_embedding_doc(self, text: str) -> np.ndarray:
+        query_embedding = self.model.encode("search_document: " + text)
+        arr = np.array(query_embedding, dtype=np.float32)
         return self._ensure_vector_size(arr)
 
     def _ensure_vector_size(self, emb: np.ndarray) -> np.ndarray:
@@ -141,7 +144,7 @@ class EmbeddingCache:
     def get_or_compute(self, key: str, text: str, force: bool = False) -> np.ndarray:
         if self.has(key) and not force:
             return self.load(key)
-        emb = self.compute_embedding(text)
+        emb = self.compute_embedding_doc(text)
         self.save(key, emb)
         return emb
 
@@ -186,7 +189,7 @@ class EmbeddingCache:
             # compute missing embeddings and save them
             for comic_number in missing:
                 text = docs[comic_number]
-                emb = self.compute_embedding(text)
+                emb = self.compute_embedding_doc(text)
                 self.save(str(comic_number), emb)
                 mapping[comic_number] = emb
 
