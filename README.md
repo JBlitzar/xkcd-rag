@@ -8,7 +8,7 @@ XKCD RAG.
 cp discord_bot.service ~/.config/systemd/user/discord-bot.service
 systemctl --user daemon-reload
 systemctl --user enable discord-bot
-systemctl --user start discord-bot
+systemctl --user restart discord-bot
 systemctl --user status discord-bot
 loginctl enable-linger $USER
 ```
