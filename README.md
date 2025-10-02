@@ -1,7 +1,8 @@
 # xkcd-rag
+
 XKCD RAG.
 
-
+`uv sync --extra build-cache`
 
 ```bash
 cp discord_bot.service ~/.config/systemd/user/discord-bot.service

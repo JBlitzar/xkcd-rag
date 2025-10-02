@@ -3,12 +3,30 @@ from tqdm import tqdm
 import os
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 
 class ExplainXKCDScraper:
     def __init__(self):
         self.base_url = "https://www.explainxkcd.com/wiki/api.php"
         self.cache_dir = "explainxkcd_cache"
+
+    @retry(
+        retry=retry_if_exception_type((requests.exceptions.RequestException,)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True,
+    )
+    def _make_request(self, params):
+        response = requests.get(self.base_url, params=params)
+        if response.status_code == 503:
+            raise requests.exceptions.RequestException(f"Service unavailable (503)")
+        return response
 
     def get_explanation(self, comic_number):
         # https://www.explainxkcd.com/wiki/api.php?action=parse&page=1&prop=wikitext&format=json
@@ -20,7 +38,7 @@ class ExplainXKCDScraper:
             "page": str(comic_number),
             "redirects": 1,
         }
-        response = requests.get(self.base_url, params=params)
+        response = self._make_request(params)
         if response.status_code != 200:
             print(f"HTTP {response.status_code} for comic {comic_number}")
             return "Explanation not found."
