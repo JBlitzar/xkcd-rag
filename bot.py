@@ -6,9 +6,10 @@ from typing import List, Dict
 import dotenv
 import discord
 
-from embedding_search import query_xkcd
+from embedding_search import query_xkcd, getQuantizedEmbedder
 
 dotenv.load_dotenv()
+getQuantizedEmbedder()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("xkcd-bot")
