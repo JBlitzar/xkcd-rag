@@ -27,6 +27,7 @@ jobs:
       - name: Rebuild caches
         run: |
           uv run python - <<'PY'
+          import random
           from explainxkcd import ExplainXKCDScraper
           from embedding_search import EmbeddingCache
 
@@ -39,10 +40,17 @@ jobs:
           missing = [n for n in sorted(explanations.keys()) if not cache.has(str(n))]
           for n in missing:
               cache.get_or_compute(str(n), explanations[n])
+
           # Recompute embeddings for the last item in cache
           if explanations:
             last_comic = max(explanations.keys())
             cache.get_or_compute(str(last_comic), explanations[last_comic], force=True)
+
+          # Force update ten random explanations
+          if len(explanations) >= 10:
+              random_comics = random.sample(list(explanations.keys()), 10)
+              for comic_id in random_comics:
+                  cache.get_or_compute(str(comic_id), explanations[comic_id], force=True)
           PY
 
       - name: Commit and push changes
