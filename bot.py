@@ -180,10 +180,25 @@ async def on_message(message: discord.Message):
         # only monitor text channels
         return
 
+    chan_id = message.channel.id
+
+    # Check for !xkcd command - trigger immediately and reset cooldown
+    if message.content.strip().lower() == "!xkcd":
+        try:
+            message_queue.put_nowait(message)
+            # Reset the counter immediately for !xkcd command
+            channel_counters[chan_id] = ACTIVATION_COUNT
+            await save_channel_counters(channel_counters)
+            logger.info(
+                f"!xkcd command received in channel {chan_id}; queued for immediate processing"
+            )
+        except asyncio.QueueFull:
+            logger.warning("Message queue full; dropping !xkcd command message")
+        return
+
     # Track per-channel user message counts and only enqueue when we've seen
     # ACTIVATION_COUNT user messages in that channel since the last time the
     # bot posted (the counter is reset only when a message is actually sent).
-    chan_id = message.channel.id
     # increment counter for this channel
     channel_counters[chan_id] = channel_counters.get(chan_id, 0) + 1
 
