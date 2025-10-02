@@ -114,6 +114,13 @@ async def worker_loop():
                 try:
                     print("Sending!!")
                     await channel.send(f"Best xkcd match (score {score:.2f}): {url}")
+                    # Reset counter only after successfully sending a message
+                    chan_id = channel.id
+                    channel_counters[chan_id] = 0
+                    save_channel_counters(channel_counters)
+                    logger.info(
+                        f"Reset counter for channel {chan_id} after sending message"
+                    )
                 except Exception:
                     logger.exception("Failed to send message to channel")
             else:
@@ -151,7 +158,7 @@ async def on_message(message: discord.Message):
 
     # Track per-channel user message counts and only enqueue when we've seen
     # ACTIVATION_COUNT user messages in that channel since the last time the
-    # bot posted (the counter is reset when we enqueue an activation).
+    # bot posted (the counter is reset only when a message is actually sent).
     chan_id = message.channel.id
     # increment counter for this channel
     channel_counters[chan_id] = channel_counters.get(chan_id, 0) + 1
@@ -160,7 +167,7 @@ async def on_message(message: discord.Message):
     save_channel_counters(channel_counters)
 
     # If we've hit the activation count, enqueue this message for processing
-    # and reset the counter for the channel.
+    # Counter will be reset only if a message is actually sent
     if channel_counters[chan_id] >= ACTIVATION_COUNT:
         try:
             message_queue.put_nowait(message)
@@ -170,12 +177,6 @@ async def on_message(message: discord.Message):
         except asyncio.QueueFull:
             # should not happen unless a maxsize is set; log and drop
             logger.warning("Message queue full; dropping activation message")
-        finally:
-            # reset counter regardless of queue outcome so we wait another
-            # ACTIVATION_COUNT messages before trying again
-            channel_counters[chan_id] = 0
-            # Save the reset counter to disk
-            save_channel_counters(channel_counters)
 
 
 if __name__ == "__main__":
