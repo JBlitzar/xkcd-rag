@@ -92,6 +92,17 @@ async def worker_loop():
         msg: discord.Message = await message_queue.get()
         try:
             channel = msg.channel
+            chan_id = channel.id
+
+            # Check if we should still process this message based on current counter state
+            current_count = channel_counters.get(chan_id, 0)
+            if current_count < ACTIVATION_COUNT:
+                logger.debug(
+                    f"Skipping queued message for channel {chan_id}: "
+                    f"current count {current_count} < activation threshold {ACTIVATION_COUNT}"
+                )
+                continue
+
             # fetch last user messages including the triggering message
             messages = await fetch_last_user_messages(
                 channel, MSG_HISTORY_COUNT, client.user
@@ -116,7 +127,6 @@ async def worker_loop():
                     print("Sending!!")
                     await channel.send(f"Best xkcd match (score {score:.2f}): {url}")
                     # Reset counter only after successfully sending a message
-                    chan_id = channel.id
                     channel_counters[chan_id] = 0
                     save_channel_counters(channel_counters)
                     logger.info(
