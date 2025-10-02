@@ -10,3 +10,5 @@ loginctl enable-linger $USER
 echo "if no work, try:"
 echo "export XDG_RUNTIME_DIR=/run/user/3277"
 echo "export DBUS_SESSION_BUS_ADDRESS=unix:path=\$XDG_RUNTIME_DIR/bus"
+echo "To view logs:"
+echo "journalctl --user -u discord-bot -f -n 50"

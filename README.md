@@ -13,6 +13,4 @@ systemctl --user status discord-bot
 loginctl enable-linger $USER
 ```
 
-Logs at `journalctl --user -u discord-bot -f`.
-
-or `journalctl --user -u discord-bot -n 50`.
+Logs at `journalctl --user -u discord-bot -f -n 50`.
