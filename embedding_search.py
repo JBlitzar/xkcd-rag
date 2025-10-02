@@ -44,6 +44,7 @@ class EmbeddingCache:
 
     def loadOrGetModel(self):
         from sentence_transformers import SentenceTransformer
+
         if self.model is None:
             self.model = SentenceTransformer(self.model_name, trust_remote_code=True)
         return self.model
@@ -130,7 +131,9 @@ class EmbeddingCache:
 
     def compute_embedding(self, text: str) -> np.ndarray:
         print("WARNING should use quantized embedder!!!!!!!")
-        query_embedding = self.loadOrGetModel().encode("search_query: " + text, device="cpu")
+        query_embedding = self.loadOrGetModel().encode(
+            "search_query: " + text, device="cpu"
+        )
         arr = np.array(query_embedding, dtype=np.float32)
         return self._ensure_vector_size(arr)
 
@@ -309,8 +312,12 @@ def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
 
     sims: List[Tuple[int, str, float]] = []
     for comic_number, doc_emb in doc_embeddings.items():
-        score = cosine_similarity(query_emb, doc_emb)
-        sims.append((comic_number, explanations[comic_number], score))
+        explanation = explanations[comic_number]
+        if "[[Category:Sex]]" in explanation:
+            continue
+        else:
+            score = cosine_similarity(query_emb, doc_emb)
+            sims.append((comic_number, explanation, score))
     print("computed similarities. Sorting...")
     sims.sort(key=lambda x: x[2], reverse=True)
     return sims[:top_k]
