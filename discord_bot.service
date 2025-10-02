@@ -5,9 +5,10 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/jblitzar/xkcd-rag
-ExecStart=/bin/sh -c 'exec /home/jblitzar/.local/bin/uv run bot.py'
+ExecStart=/home/jblitzar/xkcd-rag/.venv/bin/python bot.py
 Restart=always
 RestartSec=10
+Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=default.target
