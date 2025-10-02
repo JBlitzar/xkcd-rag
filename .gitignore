@@ -1,4 +1,6 @@
 *.onnx
+# Channel counter persistence file
+channel_counters.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

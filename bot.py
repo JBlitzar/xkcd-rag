@@ -1,13 +1,14 @@
 import os
 import asyncio
 import logging
+import json
 from typing import List, Dict
 import dotenv
-
-dotenv.load_dotenv()
 import discord
 
 from embedding_search import query_xkcd
+
+dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("xkcd-bot")
@@ -17,6 +18,7 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 MSG_HISTORY_COUNT = int(os.environ.get("XKCD_MSG_COUNT", "10"))
 SCORE_THRESHOLD = float(os.environ.get("XKCD_SCORE_THRESHOLD", "0.6"))
 ACTIVATION_COUNT = int(os.environ.get("XKCD_ACTIVATION_COUNT", "30"))
+COUNTERS_FILE = "channel_counters.json"
 
 if not DISCORD_TOKEN:
     logger.warning(
@@ -35,6 +37,28 @@ message_queue: asyncio.Queue[discord.Message] = asyncio.Queue()
 
 # per-channel counters: number of user messages since last activation
 channel_counters: Dict[int, int] = {}
+
+
+def load_channel_counters() -> Dict[int, int]:
+    """Load channel counters from disk. Returns empty dict if file doesn't exist or is invalid."""
+    try:
+        if os.path.exists(COUNTERS_FILE):
+            with open(COUNTERS_FILE, "r") as f:
+                data = json.load(f)
+                # Convert string keys back to int (JSON keys are always strings)
+                return {int(k): v for k, v in data.items()}
+    except (json.JSONDecodeError, ValueError, IOError) as e:
+        logger.warning(f"Failed to load channel counters from {COUNTERS_FILE}: {e}")
+    return {}
+
+
+def save_channel_counters(counters: Dict[int, int]) -> None:
+    """Save channel counters to disk."""
+    try:
+        with open(COUNTERS_FILE, "w") as f:
+            json.dump(counters, f, indent=2)
+    except IOError as e:
+        logger.error(f"Failed to save channel counters to {COUNTERS_FILE}: {e}")
 
 
 async def fetch_last_user_messages(
@@ -103,7 +127,13 @@ async def worker_loop():
 
 @client.event
 async def on_ready():
+    global channel_counters
     logger.info(f"Logged in as {client.user} (id: {client.user.id})")
+
+    # Load persistent channel counters
+    channel_counters = load_channel_counters()
+    logger.info(f"Loaded counters for {len(channel_counters)} channels")
+
     # start worker
     client.loop.create_task(worker_loop())
 
@@ -124,6 +154,9 @@ async def on_message(message: discord.Message):
     # increment counter for this channel
     channel_counters[chan_id] = channel_counters.get(chan_id, 0) + 1
 
+    # Save counters to disk after each update
+    save_channel_counters(channel_counters)
+
     # If we've hit the activation count, enqueue this message for processing
     # and reset the counter for the channel.
     if channel_counters[chan_id] >= ACTIVATION_COUNT:
@@ -139,6 +172,8 @@ async def on_message(message: discord.Message):
             # reset counter regardless of queue outcome so we wait another
             # ACTIVATION_COUNT messages before trying again
             channel_counters[chan_id] = 0
+            # Save the reset counter to disk
+            save_channel_counters(channel_counters)
 
 
 if __name__ == "__main__":
