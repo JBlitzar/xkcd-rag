@@ -101,8 +101,10 @@ async def worker_loop():
 
             query_text = "\n".join(messages)
 
-            # run the potentially blocking query in threadpool
-            results = await loop.run_in_executor(None, query_xkcd, query_text, 1)
+            # run the potentially blocking query in threadpool with server_mode=True
+            results = await loop.run_in_executor(
+                None, lambda: query_xkcd(query_text, 1, server_mode=True)
+            )
             if not results:
                 continue
 

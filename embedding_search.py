@@ -170,10 +170,13 @@ class EmbeddingCache:
             embeddings[comic_number] = self.get_or_compute(key, text)
         return embeddings
 
-    def get_doc_embeddings(self, docs: Dict[int, str]) -> Dict[int, np.ndarray]:
+    def get_doc_embeddings(
+        self, docs: Dict[int, str], server_mode: bool = False
+    ) -> Dict[int, np.ndarray]:
         """Return a mapping comic_number -> embedding (cached in memory).
 
         This avoids rebuilding or reloading embeddings repeatedly.
+        In server_mode, skip computing missing embeddings to avoid delays.
         """
         if self._doc_embeddings is not None:
             return self._doc_embeddings
@@ -182,9 +185,14 @@ class EmbeddingCache:
         arr = self._load_combined()
         index = self._load_index()
         if arr is None or not index:
-            # fallback to building per-document
-            self._doc_embeddings = self.build_for_documents(docs)
-            return self._doc_embeddings
+            # fallback to building per-document only if not in server mode
+            if not server_mode:
+                self._doc_embeddings = self.build_for_documents(docs)
+                return self._doc_embeddings
+            else:
+                # In server mode, return empty dict if no cache available
+                self._doc_embeddings = {}
+                return self._doc_embeddings
 
         mapping: Dict[int, np.ndarray] = {}
         for comic_str, row in index.items():
@@ -197,8 +205,9 @@ class EmbeddingCache:
             mapping[comic_number] = arr[row].astype(np.float32)
 
         # For any docs missing from index, compute and append
+        # Skip this in server mode to avoid delays
         missing: List[int] = [c for c in docs.keys() if c not in mapping]
-        if missing:
+        if missing and not server_mode:
             # compute missing embeddings and save them
             for comic_number in missing:
                 text = docs[comic_number]
@@ -283,28 +292,34 @@ def get_embedding_cache() -> EmbeddingCache:
 _explanations_cache: Optional[Dict[int, str]] = None
 
 
-def get_explanations(refresh: bool = False) -> Dict[int, str]:
+def get_explanations(
+    refresh: bool = False, server_mode: bool = False
+) -> Dict[int, str]:
     global _explanations_cache
     if _explanations_cache is not None and not refresh:
         return _explanations_cache
     scraper = ExplainXKCDScraper()
     # hydrate cache if needed (will only download what's missing)
-    scraper.hydrate_and_refresh_cache()
+    # Skip cache hydration in server mode to avoid downloads and delays
+    if not server_mode:
+        scraper.hydrate_and_refresh_cache()
     explanations = scraper.load_cache()
     _explanations_cache = explanations or {}
     return _explanations_cache
 
 
-def query_xkcd(text: str, top_k: int = 3) -> List[Tuple[int, str, float]]:
+def query_xkcd(
+    text: str, top_k: int = 3, server_mode: bool = False
+) -> List[Tuple[int, str, float]]:
     print("Querying xkcd explanations...", text)
-    explanations = get_explanations()
+    explanations = get_explanations(server_mode=server_mode)
     print(f"Loaded {len(explanations)} explanations")
     if not explanations:
         return []
 
     emb_cache = get_embedding_cache()
     print("got emb cache. Loading embeddings...")
-    doc_embeddings = emb_cache.get_doc_embeddings(explanations)
+    doc_embeddings = emb_cache.get_doc_embeddings(explanations, server_mode=server_mode)
     print("got embeddings. Computing single embedding...")
 
     query_emb = getQuantizedEmbedder().encode_query(text)
