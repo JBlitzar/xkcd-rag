@@ -40,24 +40,37 @@ message_queue: asyncio.Queue[discord.Message] = asyncio.Queue()
 channel_counters: Dict[int, int] = {}
 
 
-def load_channel_counters() -> Dict[int, int]:
-    """Load channel counters from disk. Returns empty dict if file doesn't exist or is invalid."""
-    try:
-        if os.path.exists(COUNTERS_FILE):
-            with open(COUNTERS_FILE, "r") as f:
-                data = json.load(f)
-                # Convert string keys back to int (JSON keys are always strings)
-                return {int(k): v for k, v in data.items()}
-    except (json.JSONDecodeError, ValueError, IOError) as e:
-        logger.warning(f"Failed to load channel counters from {COUNTERS_FILE}: {e}")
+def _load_channel_counters_sync() -> Dict[int, int]:
+    """Synchronous helper function to load channel counters from disk."""
+    if os.path.exists(COUNTERS_FILE):
+        with open(COUNTERS_FILE, "r") as f:
+            data = json.load(f)
+            # Convert string keys back to int (JSON keys are always strings)
+            return {int(k): v for k, v in data.items()}
     return {}
 
 
-def save_channel_counters(counters: Dict[int, int]) -> None:
-    """Save channel counters to disk."""
+async def load_channel_counters() -> Dict[int, int]:
+    """Load channel counters from disk asynchronously. Returns empty dict if file doesn't exist or is invalid."""
     try:
-        with open(COUNTERS_FILE, "w") as f:
-            json.dump(counters, f, indent=2)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _load_channel_counters_sync)
+    except (json.JSONDecodeError, ValueError, IOError) as e:
+        logger.warning(f"Failed to load channel counters from {COUNTERS_FILE}: {e}")
+        return {}
+
+
+def _save_channel_counters_sync(counters: Dict[int, int]) -> None:
+    """Synchronous helper function to save channel counters to disk."""
+    with open(COUNTERS_FILE, "w") as f:
+        json.dump(counters, f, indent=2)
+
+
+async def save_channel_counters(counters: Dict[int, int]) -> None:
+    """Save channel counters to disk asynchronously."""
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _save_channel_counters_sync, counters)
     except IOError as e:
         logger.error(f"Failed to save channel counters to {COUNTERS_FILE}: {e}")
 
@@ -128,7 +141,7 @@ async def worker_loop():
                     await channel.send(f"Best xkcd match (score {score:.2f}): {url}")
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
-                    save_channel_counters(channel_counters)
+                    await save_channel_counters(channel_counters)
                     logger.info(
                         f"Reset counter for channel {chan_id} after sending message"
                     )
@@ -151,7 +164,7 @@ async def on_ready():
     logger.info(f"Logged in as {client.user} (id: {client.user.id})")
 
     # Load persistent channel counters
-    channel_counters = load_channel_counters()
+    channel_counters = await load_channel_counters()
     logger.info(f"Loaded counters for {len(channel_counters)} channels")
 
     # start worker
@@ -175,7 +188,7 @@ async def on_message(message: discord.Message):
     channel_counters[chan_id] = channel_counters.get(chan_id, 0) + 1
 
     # Save counters to disk after each update
-    save_channel_counters(channel_counters)
+    await save_channel_counters(channel_counters)
 
     # If we've hit the activation count, enqueue this message for processing
     # Counter will be reset only if a message is actually sent
