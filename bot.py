@@ -17,7 +17,7 @@ logger = logging.getLogger("xkcd-bot")
 
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 MSG_HISTORY_COUNT = int(os.environ.get("XKCD_MSG_COUNT", "10"))
-SCORE_THRESHOLD = float(os.environ.get("XKCD_SCORE_THRESHOLD", "0.67"))
+SCORE_THRESHOLD = float(os.environ.get("XKCD_SCORE_THRESHOLD", "0.6741"))
 ACTIVATION_COUNT = int(os.environ.get("XKCD_ACTIVATION_COUNT", "30"))
 COUNTERS_FILE = "channel_counters.json"
 
