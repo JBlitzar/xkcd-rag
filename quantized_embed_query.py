@@ -12,10 +12,12 @@ class _QuantizedEmbedder:
         self,
         model_name: str = "nomic-ai/nomic-embed-text-v1.5",
         cache_dir: str = "onnx_cache",
+        num_threads: int = 4,  # NEW: configurable thread count
     ):
         self.model_name = model_name
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
+        self.num_threads = num_threads
 
         # Download and cache the quantized ONNX model
         self.model_path = self._download_quantized_model()
@@ -23,13 +25,21 @@ class _QuantizedEmbedder:
         # Load tokenizer
         self.tokenizer = Tokenizer.from_pretrained(model_name)
 
+        # CRITICAL: Disable tokenizer parallelism to avoid thread explosion
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
         # Create ONNX Runtime session with optimizations
         providers = ["CPUExecutionProvider"]
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = (
             ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         )
-        sess_options.intra_op_num_threads = os.cpu_count()
+        # FIXED: Use controlled thread count instead of all CPUs
+        sess_options.intra_op_num_threads = self.num_threads
+        sess_options.inter_op_num_threads = 1  # NEW: Disable inter-op parallelism
+        sess_options.execution_mode = (
+            ort.ExecutionMode.ORT_SEQUENTIAL
+        )  # NEW: Sequential execution
 
         self.session = ort.InferenceSession(
             str(self.model_path), sess_options=sess_options, providers=providers
@@ -45,7 +55,7 @@ class _QuantizedEmbedder:
         local_path = self.cache_dir / model_filename
 
         if local_path.exists():
-            print(f"Using cached quantized model: {local_path}")
+            # Removed print for production use
             return local_path
 
         # Download from HuggingFace
@@ -67,9 +77,7 @@ class _QuantizedEmbedder:
     ) -> Dict[str, np.ndarray]:
         """Tokenize texts for ONNX model input."""
 
-        encoded = self.tokenizer.encode_batch(
-            texts,
-        )
+        encoded = self.tokenizer.encode_batch(texts)
 
         # Convert to the expected input format for ONNX
         inputs = {}
@@ -158,7 +166,7 @@ def getQuantizedEmbedder() -> _QuantizedEmbedder:
     # singleton pattern
     global embedder
     if embedder is None:
-        embedder = _QuantizedEmbedder()
+        embedder = _QuantizedEmbedder(num_threads=4)  # TUNABLE: Start with 4
     return embedder
 
 
