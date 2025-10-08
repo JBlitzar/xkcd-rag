@@ -2,7 +2,7 @@ import os
 import asyncio
 import logging
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 import dotenv
 import discord
 
@@ -116,15 +116,23 @@ async def worker_loop():
                 )
                 continue
 
-            # fetch last user messages including the triggering message
-            messages = await fetch_last_user_messages(
-                channel, MSG_HISTORY_COUNT, client.user
-            )
-            if not messages:
-                logger.debug("No messages found to query")
-                continue
+            # Determine query source: explicit `!xkcd {query}` or recent history
+            explicit_query: Optional[str] = None
+            if isinstance(msg.content, str) and msg.content.strip().lower().startswith("!xkcd"):
+                # Everything after the command is treated as the query
+                explicit_query = msg.content.strip()[5:].strip()
 
-            query_text = "\n".join(messages)
+            if explicit_query:
+                query_text = explicit_query
+            else:
+                # fetch last user messages including the triggering message
+                messages = await fetch_last_user_messages(
+                    channel, MSG_HISTORY_COUNT, client.user
+                )
+                if not messages:
+                    logger.debug("No messages found to query")
+                    continue
+                query_text = "\n".join(messages)
 
             # run the potentially blocking query in threadpool with server_mode=True
             results = await loop.run_in_executor(
@@ -148,9 +156,23 @@ async def worker_loop():
                 except Exception:
                     logger.exception("Failed to send message to channel")
             else:
-                logger.debug(
-                    f"Top match score {score:.3f} below threshold {SCORE_THRESHOLD}, not posting."
-                )
+                # For explicit queries, inform user of the highest score without linking
+                if explicit_query is not None and explicit_query != "":
+                    try:
+                        await channel.send(
+                            f"Top xkcd match score was {score:.2f} (below threshold {SCORE_THRESHOLD:.2f})."
+                        )
+                        channel_counters[chan_id] = 0
+                        await save_channel_counters(channel_counters)
+                        logger.info(
+                            f"Reset counter for channel {chan_id} after sending below-threshold notice"
+                        )
+                    except Exception:
+                        logger.exception("Failed to send below-threshold score message")
+                else:
+                    logger.debug(
+                        f"Top match score {score:.3f} below threshold {SCORE_THRESHOLD}, not posting."
+                    )
 
         except Exception:
             logger.exception("Error processing queued message")
@@ -182,8 +204,9 @@ async def on_message(message: discord.Message):
 
     chan_id = message.channel.id
 
-    # Check for !xkcd command - trigger immediately and reset cooldown
-    if message.content.strip().lower() == "!xkcd":
+    # Check for !xkcd command (optionally followed by a query) - trigger immediately and reset cooldown
+    content_stripped = message.content.strip()
+    if content_stripped.lower().startswith("!xkcd"):
         try:
             message_queue.put_nowait(message)
             # Reset the counter immediately for !xkcd command
