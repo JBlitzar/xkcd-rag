@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import json
+import time
 from typing import List, Dict, Optional
 import dotenv
 import discord
@@ -20,6 +21,9 @@ MSG_HISTORY_COUNT = int(os.environ.get("XKCD_MSG_COUNT", "10"))
 SCORE_THRESHOLD = float(os.environ.get("XKCD_SCORE_THRESHOLD", "0.64"))
 ACTIVATION_COUNT = int(os.environ.get("XKCD_ACTIVATION_COUNT", "30"))
 COUNTERS_FILE = "channel_counters.json"
+HISTORY_FILE = "channel_xkcd_history.json"
+REPEAT_WINDOW_DAYS = float(os.environ.get("XKCD_REPEAT_WINDOW_DAYS", "14"))
+REPEAT_WINDOW_SECONDS = int(REPEAT_WINDOW_DAYS * 86400)
 
 if not DISCORD_TOKEN:
     logger.warning(
@@ -38,6 +42,9 @@ message_queue: asyncio.Queue[discord.Message] = asyncio.Queue()
 
 # per-channel counters: number of user messages since last activation
 channel_counters: Dict[int, int] = {}
+
+# per-channel history of last sent time per comic_number (epoch seconds)
+channel_history: Dict[int, Dict[int, float]] = {}
 
 
 def _load_channel_counters_sync() -> Dict[int, int]:
@@ -73,6 +80,96 @@ async def save_channel_counters(counters: Dict[int, int]) -> None:
         await loop.run_in_executor(None, _save_channel_counters_sync, counters)
     except IOError as e:
         logger.error(f"Failed to save channel counters to {COUNTERS_FILE}: {e}")
+
+
+def _prune_history_map(
+    history: Dict[int, Dict[int, float]], now: Optional[float] = None
+) -> Dict[int, Dict[int, float]]:
+    """Return a new history with entries older than the repeat window removed."""
+    now = now or time.time()
+    cutoff = now - REPEAT_WINDOW_SECONDS
+    pruned: Dict[int, Dict[int, float]] = {}
+    for chan_id, mapping in history.items():
+        if not isinstance(mapping, dict):
+            continue
+        filtered = {
+            cn: ts
+            for cn, ts in mapping.items()
+            if isinstance(ts, (int, float)) and ts >= cutoff
+        }
+        if filtered:
+            pruned[chan_id] = filtered
+    return pruned
+
+
+def _load_channel_history_sync() -> Dict[int, Dict[int, float]]:
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            raw = json.load(f)
+            out: Dict[int, Dict[int, float]] = {}
+            for chan_str, mapping in raw.items():
+                try:
+                    chan_id = int(chan_str)
+                except ValueError:
+                    continue
+                inner: Dict[int, float] = {}
+                if isinstance(mapping, dict):
+                    for comic_str, ts in mapping.items():
+                        try:
+                            inner[int(comic_str)] = float(ts)
+                        except (ValueError, TypeError):
+                            continue
+                out[chan_id] = inner
+            # Prune any entries older than the repeat window
+            return _prune_history_map(out, time.time())
+    return {}
+
+
+async def load_channel_history() -> Dict[int, Dict[int, float]]:
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _load_channel_history_sync)
+    except (json.JSONDecodeError, ValueError, IOError) as e:
+        logger.warning(f"Failed to load channel history from {HISTORY_FILE}: {e}")
+        return {}
+
+
+def _save_channel_history_sync(history: Dict[int, Dict[int, float]]) -> None:
+    # Prune old entries before persisting to disk
+    pruned = _prune_history_map(history, time.time())
+    serializable = {
+        str(chan): {str(cn): ts for cn, ts in mapping.items()}
+        for chan, mapping in pruned.items()
+    }
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(serializable, f, indent=2)
+
+
+async def save_channel_history(history: Dict[int, Dict[int, float]]) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _save_channel_history_sync, history)
+    except IOError as e:
+        logger.error(f"Failed to save channel history to {HISTORY_FILE}: {e}")
+
+
+def is_recently_sent(
+    chan_id: int, comic_number: int, now: Optional[float] = None
+) -> bool:
+    now = now or time.time()
+    last = channel_history.get(chan_id, {}).get(comic_number)
+    if last is None:
+        return False
+    return (now - last) < REPEAT_WINDOW_SECONDS
+
+
+async def record_sent(chan_id: int, comic_number: int) -> None:
+    ch = channel_history.get(chan_id)
+    if ch is None:
+        ch = {}
+        channel_history[chan_id] = ch
+    ch[comic_number] = time.time()
+    await save_channel_history(channel_history)
 
 
 async def fetch_last_user_messages(
@@ -118,7 +215,9 @@ async def worker_loop():
 
             # Determine query source: explicit `!xkcd {query}` or recent history
             explicit_query: Optional[str] = None
-            if isinstance(msg.content, str) and msg.content.strip().lower().startswith("!xkcd"):
+            if isinstance(msg.content, str) and msg.content.strip().lower().startswith(
+                "!xkcd"
+            ):
                 # Everything after the command is treated as the query
                 explicit_query = msg.content.strip()[5:].strip()
 
@@ -135,13 +234,40 @@ async def worker_loop():
                 query_text = "\n".join(messages)
 
             # run the potentially blocking query in threadpool with server_mode=True
+            # fetch more candidates to allow skipping recently sent comics per channel
             results = await loop.run_in_executor(
-                None, lambda: query_xkcd(query_text, 1, server_mode=True)
+                None, lambda: query_xkcd(query_text, 25, server_mode=True)
             )
             if not results:
                 continue
 
-            comic_number, explanation, score = results[0]
+            # pick first candidate not sent within the repeat window for this channel
+            selected: Optional[tuple[int, str, float]] = None
+            now_ts = time.time()
+            for cn, expl, sc in results:
+                if not is_recently_sent(chan_id, cn, now_ts):
+                    selected = (cn, expl, sc)
+                    break
+
+            if selected is None:
+                # All top candidates recently sent; don't repeat
+                if explicit_query is not None and explicit_query != "":
+                    try:
+                        top_score = results[0][2]
+                        await channel.send(
+                            f"Top xkcd match score was {top_score:.2f}, but recent matches were already posted here."
+                        )
+                        channel_counters[chan_id] = 0
+                        await save_channel_counters(channel_counters)
+                    except Exception:
+                        logger.exception("Failed to send repeat-notice message")
+                else:
+                    logger.info(
+                        f"All top candidates are within repeat window for channel {chan_id}; not posting."
+                    )
+                continue
+
+            comic_number, explanation, score = selected
             if score > SCORE_THRESHOLD:
                 url = f"https://xkcd.com/{comic_number}/"
                 try:
@@ -150,6 +276,7 @@ async def worker_loop():
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
                     await save_channel_counters(channel_counters)
+                    await record_sent(chan_id, comic_number)
                     logger.info(
                         f"Reset counter for channel {chan_id} after sending message"
                     )
@@ -182,12 +309,16 @@ async def worker_loop():
 
 @client.event
 async def on_ready():
-    global channel_counters
+    global channel_counters, channel_history
     logger.info(f"Logged in as {client.user} (id: {client.user.id})")
 
     # Load persistent channel counters
     channel_counters = await load_channel_counters()
     logger.info(f"Loaded counters for {len(channel_counters)} channels")
+
+    # Load per-channel comic history
+    channel_history = await load_channel_history()
+    logger.info(f"Loaded comic history for {len(channel_history)} channels")
 
     # start worker
     client.loop.create_task(worker_loop())
