@@ -255,7 +255,7 @@ async def worker_loop():
                     try:
                         top_score = results[0][2]
                         await channel.send(
-                            f"Top xkcd match score was {top_score:.2f}, but recent matches were already posted here."
+                            f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here."
                         )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
@@ -272,7 +272,7 @@ async def worker_loop():
                 url = f"https://xkcd.com/{comic_number}/"
                 try:
                     print("Sending!!")
-                    await channel.send(f"Best xkcd match (score {score:.2f}): {url}")
+                    await channel.send(f"Best xkcd match (score {score:.3f}): {url}")
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
                     await save_channel_counters(channel_counters)
@@ -287,7 +287,7 @@ async def worker_loop():
                 if explicit_query is not None and explicit_query != "":
                     try:
                         await channel.send(
-                            f"Top xkcd match score was {score:.2f} (below threshold {SCORE_THRESHOLD:.2f})."
+                            f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f})."
                         )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
