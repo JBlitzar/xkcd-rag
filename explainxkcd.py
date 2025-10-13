@@ -29,7 +29,7 @@ class ExplainXKCDScraper:
         return response
 
     def get_explanation(self, comic_number):
-        # https://www.explainxkcd.com/wiki/api.php?action=parse&page=1&prop=wikitext&format=json
+        # https://www.explainxkcd.com/wiki/api.php?action=parse&page=1234&prop=wikitext&format=json&redirects=1
         params = {
             "action": "parse",
             "format": "json",
