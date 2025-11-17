@@ -46,6 +46,12 @@ channel_counters: Dict[int, int] = {}
 # per-channel history of last sent time per comic_number (epoch seconds)
 channel_history: Dict[int, Dict[int, float]] = {}
 
+# Channels where the bot must not post or process messages
+# Add channel IDs here to blacklist them from any bot activity
+BLACKLISTED_CHANNELS = {
+    1412651153602248704,
+}
+
 
 def _load_channel_counters_sync() -> Dict[int, int]:
     """Synchronous helper function to load channel counters from disk."""
@@ -204,6 +210,11 @@ async def worker_loop():
             channel = msg.channel
             chan_id = channel.id
 
+            # Do not process or send in blacklisted channels
+            if chan_id in BLACKLISTED_CHANNELS:
+                logger.info(f"Channel {chan_id} is blacklisted; skipping processing")
+                continue
+
             # Check if we should still process this message based on current counter state
             current_count = channel_counters.get(chan_id, 0)
             if current_count < ACTIVATION_COUNT:
@@ -254,9 +265,11 @@ async def worker_loop():
                 if explicit_query is not None and explicit_query != "":
                     try:
                         top_score = results[0][2]
-                        await channel.send(
-                            f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here."
-                        )
+                        # Respect blacklist just in case (should be filtered earlier)
+                        if chan_id not in BLACKLISTED_CHANNELS:
+                            await channel.send(
+                                f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here."
+                            )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
                     except Exception:
@@ -272,7 +285,9 @@ async def worker_loop():
                 url = f"https://xkcd.com/{comic_number}/"
                 try:
                     print("Sending!!")
-                    await channel.send(f"Best xkcd match (score {score:.3f}): {url}")
+                    # Respect blacklist just in case (should be filtered earlier)
+                    if chan_id not in BLACKLISTED_CHANNELS:
+                        await channel.send(f"Best xkcd match (score {score:.3f}): {url}")
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
                     await save_channel_counters(channel_counters)
@@ -286,9 +301,11 @@ async def worker_loop():
                 # For explicit queries, inform user of the highest score without linking
                 if explicit_query is not None and explicit_query != "":
                     try:
-                        await channel.send(
-                            f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f})."
-                        )
+                        # Respect blacklist just in case (should be filtered earlier)
+                        if chan_id not in BLACKLISTED_CHANNELS:
+                            await channel.send(
+                                f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f})."
+                            )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
                         logger.info(
@@ -334,6 +351,11 @@ async def on_message(message: discord.Message):
         return
 
     chan_id = message.channel.id
+
+    # Ignore blacklisted channels entirely
+    if chan_id in BLACKLISTED_CHANNELS:
+        logger.info(f"Message in blacklisted channel {chan_id} ignored")
+        return
 
     # Check for !xkcd command (optionally followed by a query) - trigger immediately and reset cooldown
     content_stripped = message.content.strip()
