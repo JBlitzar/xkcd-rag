@@ -268,7 +268,7 @@ async def worker_loop():
                         # Respect blacklist just in case (should be filtered earlier)
                         if chan_id not in BLACKLISTED_CHANNELS:
                             await channel.send(
-                                f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here."
+                                f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here.\n> xkcd-bot by blitzy"
                             )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
@@ -287,7 +287,9 @@ async def worker_loop():
                     print("Sending!!")
                     # Respect blacklist just in case (should be filtered earlier)
                     if chan_id not in BLACKLISTED_CHANNELS:
-                        await channel.send(f"Best xkcd match (score {score:.3f}): {url}")
+                        await channel.send(
+                            f"Best xkcd match (score {score:.3f}): {url}\n> xkcd-bot by blitzy"
+                        )
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
                     await save_channel_counters(channel_counters)
@@ -304,7 +306,7 @@ async def worker_loop():
                         # Respect blacklist just in case (should be filtered earlier)
                         if chan_id not in BLACKLISTED_CHANNELS:
                             await channel.send(
-                                f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f})."
+                                f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f}).\n> xkcd-bot by blitzy"
                             )
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
