@@ -22,7 +22,7 @@ SCORE_THRESHOLD = float(os.environ.get("XKCD_SCORE_THRESHOLD", "0.64"))
 ACTIVATION_COUNT = int(os.environ.get("XKCD_ACTIVATION_COUNT", "30"))
 COUNTERS_FILE = "channel_counters.json"
 HISTORY_FILE = "channel_xkcd_history.json"
-REPEAT_WINDOW_DAYS = float(os.environ.get("XKCD_REPEAT_WINDOW_DAYS", "14"))
+REPEAT_WINDOW_DAYS = float(os.environ.get("XKCD_REPEAT_WINDOW_DAYS", "30"))
 REPEAT_WINDOW_SECONDS = int(REPEAT_WINDOW_DAYS * 86400)
 
 if not DISCORD_TOKEN:
