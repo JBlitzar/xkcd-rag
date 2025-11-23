@@ -34,6 +34,7 @@ if not DISCORD_TOKEN:
 intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
+intents.reactions = True
 
 client = discord.Client(intents=intents)
 
@@ -51,6 +52,9 @@ channel_history: Dict[int, Dict[int, float]] = {}
 BLACKLISTED_CHANNELS = {
     1412651153602248704,
 }
+
+# Red X emoji for message deletion
+DELETE_EMOJI = "❌"
 
 
 def _load_channel_counters_sync() -> Dict[int, int]:
@@ -267,9 +271,11 @@ async def worker_loop():
                         top_score = results[0][2]
                         # Respect blacklist just in case (should be filtered earlier)
                         if chan_id not in BLACKLISTED_CHANNELS:
-                            await channel.send(
+                            sent_msg = await channel.send(
                                 f"Top xkcd match score was {top_score:.3f}, but recent matches were already posted here.\n> xkcd-bot by blitzy"
                             )
+                            # Add red X reaction for deletion
+                            await sent_msg.add_reaction(DELETE_EMOJI)
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
                     except Exception:
@@ -287,9 +293,11 @@ async def worker_loop():
                     print("Sending!!")
                     # Respect blacklist just in case (should be filtered earlier)
                     if chan_id not in BLACKLISTED_CHANNELS:
-                        await channel.send(
+                        sent_msg = await channel.send(
                             f"Best xkcd match (score {score:.3f}): {url}\n> xkcd-bot by blitzy"
                         )
+                        # Add red X reaction for deletion
+                        await sent_msg.add_reaction(DELETE_EMOJI)
                     # Reset counter only after successfully sending a message
                     channel_counters[chan_id] = 0
                     await save_channel_counters(channel_counters)
@@ -305,9 +313,11 @@ async def worker_loop():
                     try:
                         # Respect blacklist just in case (should be filtered earlier)
                         if chan_id not in BLACKLISTED_CHANNELS:
-                            await channel.send(
+                            sent_msg = await channel.send(
                                 f"Top xkcd match score was {score:.3f} (below threshold {SCORE_THRESHOLD:.3f}).\n> xkcd-bot by blitzy"
                             )
+                            # Add red X reaction for deletion
+                            await sent_msg.add_reaction(DELETE_EMOJI)
                         channel_counters[chan_id] = 0
                         await save_channel_counters(channel_counters)
                         logger.info(
@@ -341,6 +351,33 @@ async def on_ready():
 
     # start worker
     client.loop.create_task(worker_loop())
+
+
+@client.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+    """Handle reactions added to messages. Delete bot messages when users react with red X."""
+    # Ignore reactions from bots
+    if user.bot:
+        return
+    
+    # Check if the reaction is the delete emoji
+    if str(reaction.emoji) != DELETE_EMOJI:
+        return
+    
+    # Check if the message is from the bot
+    if reaction.message.author != client.user:
+        return
+    
+    # Delete the message
+    try:
+        await reaction.message.delete()
+        logger.info(f"Message {reaction.message.id} deleted by user {user.name} via reaction")
+    except discord.errors.NotFound:
+        logger.warning(f"Message {reaction.message.id} already deleted")
+    except discord.errors.Forbidden:
+        logger.error(f"Bot lacks permission to delete message {reaction.message.id}")
+    except Exception:
+        logger.exception(f"Failed to delete message {reaction.message.id}")
 
 
 @client.event
