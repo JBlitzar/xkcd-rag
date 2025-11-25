@@ -289,12 +289,15 @@ async def worker_loop():
             comic_number, explanation, score = selected
             if score > SCORE_THRESHOLD:
                 url = f"https://xkcd.com/{comic_number}/"
+                explanation = (
+                    f"https://www.explainxkcd.com/wiki/index.php/{comic_number}"
+                )
                 try:
                     print("Sending!!")
                     # Respect blacklist just in case (should be filtered earlier)
                     if chan_id not in BLACKLISTED_CHANNELS:
                         sent_msg = await channel.send(
-                            f"Best xkcd match (score {score:.3f}): {url}\n> xkcd-bot by blitzy"
+                            f"Best xkcd match (score {score:.3f}): {url}\n> xkcd-bot by blitzy\n\n [explain]({explanation})"
                         )
                         # Add red X reaction for deletion
                         await sent_msg.add_reaction(DELETE_EMOJI)
@@ -359,19 +362,21 @@ async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
     # Ignore reactions from bots
     if user.bot:
         return
-    
+
     # Check if the reaction is the delete emoji
     if str(reaction.emoji) != DELETE_EMOJI:
         return
-    
+
     # Check if the message is from the bot
     if reaction.message.author != client.user:
         return
-    
+
     # Delete the message
     try:
         await reaction.message.delete()
-        logger.info(f"Message {reaction.message.id} deleted by user {user.name} via reaction")
+        logger.info(
+            f"Message {reaction.message.id} deleted by user {user.name} via reaction"
+        )
     except discord.errors.NotFound:
         logger.warning(f"Message {reaction.message.id} already deleted")
     except discord.errors.Forbidden:
