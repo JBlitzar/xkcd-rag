@@ -66,14 +66,24 @@ def _is_within(base: str, target: str) -> bool:
 def safe_extract(tar: tarfile.TarFile, root: str) -> None:
     allowed_prefixes = (EMBEDDINGS_DIR + "/", EXPLAINXKCD_DIR + "/")
     allowed_exact = (EMBEDDINGS_DIR, EXPLAINXKCD_DIR)
+    members = []
     for member in tar.getmembers():
-        name = member.name.lstrip("./")
-        if not (name in allowed_exact or name.startswith(allowed_prefixes)):
+        raw = member.name
+        if raw.startswith("./"):
+            raw = raw[2:]
+        if raw.startswith("/") or ".." in raw.split("/"):
+            raise RuntimeError(f"Refusing unsafe entry: {member.name}")
+        # Skip macOS AppleDouble metadata and resource forks anywhere in the path.
+        parts = raw.split("/")
+        if any(p.startswith("._") or p == ".DS_Store" for p in parts):
+            continue
+        if not (raw in allowed_exact or raw.startswith(allowed_prefixes)):
             raise RuntimeError(f"Refusing to extract unexpected entry: {member.name}")
-        dest_path = os.path.join(root, name)
+        dest_path = os.path.join(root, raw)
         if not _is_within(root, dest_path):
             raise RuntimeError(f"Refusing path traversal entry: {member.name}")
-    tar.extractall(root)
+        members.append(member)
+    tar.extractall(root, members=members)
 
 
 def bootstrap(
