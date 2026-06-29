@@ -2,6 +2,11 @@
 # Channel counter persistence file
 channel_counters.json
 channel_xkcd_history.json
+# Caches are distributed via the `cache-latest` GitHub Release, not via git.
+embeddings_cache/
+explainxkcd_cache/
+cache.tar.zst
+cache.tar.gz
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
