@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily refresh of xkcd-rag cache from GitHub release
+
+[Timer]
+OnCalendar=*-*-* 20:00:00 UTC
+RandomizedDelaySec=5min
+Persistent=true
+Unit=cache-refresh.service
+
+[Install]
+WantedBy=timers.target
