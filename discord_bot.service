@@ -8,7 +8,7 @@ WorkingDirectory=/home/jblitzar/xkcd-rag
 ExecStart=/home/jblitzar/xkcd-rag/.venv/bin/python bot.py
 Restart=always
 RestartSec=10
-Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONUNBUFFERED=1 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 TOKENIZERS_PARALLELISM=false"
 
 [Install]
 WantedBy=default.target

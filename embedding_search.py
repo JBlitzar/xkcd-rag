@@ -2,6 +2,7 @@ import numpy as np
 import os
 import json
 import shutil
+import time
 from explainxkcd import ExplainXKCDScraper
 from tqdm import tqdm
 from typing import Dict, Tuple, List, Optional
@@ -277,6 +278,72 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
+# Lazily-built batched search matrix:
+#   matrix: (N, 768) float32, unit-normalized doc embeddings
+#   valid_mask: bool array, True where comic is not in Sex blacklist
+#   comics: int64 array, comic_number per row (sorted)
+_search_cache: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]] = None
+
+
+def _build_search_matrix(
+    doc_embeddings: Dict[int, np.ndarray],
+    explanations: Dict[int, str],
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    if not doc_embeddings:
+        return None
+    comics_sorted = sorted(doc_embeddings.keys())
+    raw = np.stack([doc_embeddings[c] for c in comics_sorted]).astype(np.float32)
+    norms = np.linalg.norm(raw, axis=1, keepdims=True)
+    norms = np.maximum(norms, 1e-12)
+    matrix = (raw / norms).astype(np.float32)
+    valid_mask = np.array(
+        [
+            "[[Category:Sex]]" not in (explanations.get(c) or "")
+            for c in comics_sorted
+        ],
+        dtype=bool,
+    )
+    comic_numbers = np.array(comics_sorted, dtype=np.int64)
+    return matrix, valid_mask, comic_numbers
+
+
+def _get_search_matrix(
+    doc_embeddings: Dict[int, np.ndarray],
+    explanations: Dict[int, str],
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    global _search_cache
+    if _search_cache is None:
+        _search_cache = _build_search_matrix(doc_embeddings, explanations)
+    return _search_cache
+
+
+_QUERY_CACHE_TTL_SEC = 60.0
+_QUERY_CACHE_MAX = 256
+_QUERY_CACHE: Dict[str, Tuple[float, List[Tuple[int, str, float]]]] = {}
+
+
+def _query_cache_get(key: str) -> Optional[List[Tuple[int, str, float]]]:
+    now = time.monotonic()
+    entry = _QUERY_CACHE.get(key)
+    if entry is None:
+        return None
+    ts, result = entry
+    if now - ts > _QUERY_CACHE_TTL_SEC:
+        _QUERY_CACHE.pop(key, None)
+        return None
+    return result
+
+
+def _query_cache_put(key: str, result: List[Tuple[int, str, float]]) -> None:
+    if len(_QUERY_CACHE) >= _QUERY_CACHE_MAX:
+        victims = sorted(_QUERY_CACHE, key=lambda k: _QUERY_CACHE[k][0])[
+            : max(1, _QUERY_CACHE_MAX // 4)
+        ]
+        for k in victims:
+            _QUERY_CACHE.pop(k, None)
+    _QUERY_CACHE[key] = (time.monotonic(), result)
+
+
 # Module-level singleton for the embedding cache
 _embedding_cache_singleton: Optional[EmbeddingCache] = None
 
@@ -317,25 +384,45 @@ def query_xkcd(
     if not explanations:
         return []
 
+    cache_key = f"{top_k}:" + str(hash((text, top_k)))
+    cached = _query_cache_get(cache_key)
+    if cached is not None:
+        print("query cache hit.")
+        return cached
+
     emb_cache = get_embedding_cache()
     print("got emb cache. Loading embeddings...")
     doc_embeddings = emb_cache.get_doc_embeddings(explanations, server_mode=server_mode)
-    print("got embeddings. Computing single embedding...")
+    print("got embeddings. Computing single query embedding...")
 
-    query_emb = getQuantizedEmbedder().encode_query(text)
-    print("got query embedding. Computing similarities...")
+    query_emb = getQuantizedEmbedder().encode_query(text).astype(np.float32, copy=False)
+    print("got query embedding. Computing similarities (vectorized)...")
+
+    sm = _get_search_matrix(doc_embeddings, explanations)
+    if sm is None:
+        return []
+    matrix, valid_mask, comics = sm
+
+    q_norm = float(np.linalg.norm(query_emb))
+    if q_norm > 1e-12:
+        q = query_emb / q_norm
+    else:
+        q = query_emb
+
+    scores = matrix @ q
+    scores_for_arg = np.where(valid_mask, scores, -np.inf)
+    order = np.argsort(scores_for_arg)[::-1][:top_k]
 
     sims: List[Tuple[int, str, float]] = []
-    for comic_number, doc_emb in doc_embeddings.items():
-        explanation = explanations[comic_number]
-        if "[[Category:Sex]]" in explanation:
-            continue
-        else:
-            score = cosine_similarity(query_emb, doc_emb)
-            sims.append((comic_number, explanation, score))
+    for i in order:
+        comic = int(comics[i])
+        sims.append((comic, explanations[comic], float(scores[i])))
+
     print("computed similarities. Sorting...")
     sims.sort(key=lambda x: x[2], reverse=True)
-    return sims[:top_k]
+    result = sims[:top_k]
+    _query_cache_put(cache_key, result)
+    return result
 
 
 if __name__ == "__main__":
