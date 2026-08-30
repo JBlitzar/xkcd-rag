@@ -297,7 +297,7 @@ async def worker_loop():
                     # Respect blacklist just in case (should be filtered earlier)
                     if chan_id not in BLACKLISTED_CHANNELS:
                         sent_msg = await channel.send(
-                            f"Best xkcd match (score {score:.3f}): {url}\n> xkcd-bot by blitzy\n\n [explain]({explanation})"
+                            f"Best xkcd match (score {score:.3f}): {comic_number}\n> xkcd-bot by blitzy\n\n [explain]({explanation})"
                         )
                         # Add red X reaction for deletion
                         await sent_msg.add_reaction(DELETE_EMOJI)
