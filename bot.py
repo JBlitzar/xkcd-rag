@@ -6,6 +6,7 @@ import time
 from typing import List, Dict, Optional
 import dotenv
 import discord
+import requests
 
 from embedding_search import query_xkcd, getQuantizedEmbedder
 
@@ -55,6 +56,19 @@ BLACKLISTED_CHANNELS = {
 
 # Red X emoji for message deletion
 DELETE_EMOJI = "❌"
+
+
+def _fetch_title_text_sync(comic_number: int) -> Optional[str]:
+    """Fetch the title text (alt text) for an xkcd comic from the xkcd API."""
+    try:
+        resp = requests.get(
+            f"https://xkcd.com/{comic_number}/info.0.json", timeout=10
+        )
+        if resp.status_code == 200:
+            return resp.json().get("alt")
+    except Exception:
+        logger.warning(f"Failed to fetch title text for comic {comic_number}")
+    return None
 
 
 def _load_channel_counters_sync() -> Dict[int, int]:
@@ -288,17 +302,20 @@ async def worker_loop():
 
             comic_number, explanation, score = selected
             if score > SCORE_THRESHOLD:
-                url = f"https://xkcd.com/{comic_number}/"
                 explanation = (
                     f"https://www.explainxkcd.com/wiki/index.php/{comic_number}"
+                )
+                title_text = await loop.run_in_executor(
+                    None, lambda: _fetch_title_text_sync(comic_number)
                 )
                 try:
                     print("Sending!!")
                     # Respect blacklist just in case (should be filtered earlier)
                     if chan_id not in BLACKLISTED_CHANNELS:
-                        sent_msg = await channel.send(
-                            f"Best xkcd match (score {score:.3f}): {comic_number}\n> xkcd-bot by blitzy\n\n [explain]({explanation})"
-                        )
+                        message_str = f"Best xkcd match (score {score:.3f}): {comic_number}\n> xkcd-bot by blitzy\n\n[explain]({explanation})"
+                        if title_text:
+                            message_str += f"\n*{title_text}*"
+                        sent_msg = await channel.send(message_str)
                         # Add red X reaction for deletion
                         await sent_msg.add_reaction(DELETE_EMOJI)
                     # Reset counter only after successfully sending a message
