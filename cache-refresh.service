@@ -1,13 +1,13 @@
 [Unit]
 Description=Refresh xkcd-rag cache from GitHub release and restart bot
-After=network-online.target
+After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/xkcd-rag
-ExecStart=%h/.local/bin/uv run python bootstrap_cache.py --force
-ExecStartPost=/usr/bin/systemctl --user restart discord-bot.service
+ExecStart=/usr/bin/docker compose exec -T xkcd-bot python bootstrap_cache.py --force
+ExecStartPost=/usr/bin/docker compose restart xkcd-bot
 Environment="PYTHONUNBUFFERED=1"
 
 [Install]

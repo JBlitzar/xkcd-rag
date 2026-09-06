@@ -1,18 +1,19 @@
-SERVICE := discord-bot
+.PHONY: up down restart logs ps build
 
-.PHONY: start stop restart status logs
+up:
+	docker compose up -d --build
 
-start:
-	systemctl --user start $(SERVICE)
-
-stop:
-	systemctl --user stop $(SERVICE)
+down:
+	docker compose down
 
 restart:
-	systemctl --user restart $(SERVICE)
-
-status:
-	systemctl --user status $(SERVICE) --no-pager -n 30
+	docker compose restart
 
 logs:
-	journalctl --user -u $(SERVICE) -f -n 50
+	docker compose logs -f
+
+ps:
+	docker compose ps
+
+build:
+	docker compose build

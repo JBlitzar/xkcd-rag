@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+embeddings_cache
+explainxkcd_cache
+onnx_cache
+hf_cache
+*.onnx
+channel_counters.json
+channel_xkcd_history.json
+cache.tar.gz
+cache.tar.zst

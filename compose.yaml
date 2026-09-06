@@ -1,0 +1,18 @@
+services:
+  xkcd-bot:
+    build: .
+    container_name: xkcd-bot
+    restart: always
+    env_file: .env
+    environment:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+      HF_HOME: /app/hf_cache
+    volumes:
+      - ./embeddings_cache:/app/embeddings_cache
+      - ./explainxkcd_cache:/app/explainxkcd_cache
+      - ./onnx_cache:/app/onnx_cache
+      - ./hf_cache:/app/hf_cache
+      - ./channel_counters.json:/app/channel_counters.json
+      - ./channel_xkcd_history.json:/app/channel_xkcd_history.json
