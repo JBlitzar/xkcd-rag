@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly restart of xkcd-bot at midnight Pacific
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

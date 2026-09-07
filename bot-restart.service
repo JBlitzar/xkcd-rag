@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart xkcd-bot to clear memory leaks
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/xkcd-rag
+ExecStart=/usr/bin/docker compose restart xkcd-bot
